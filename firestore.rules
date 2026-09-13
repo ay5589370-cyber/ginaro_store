@@ -1,0 +1,388 @@
+rules_version = '2';
+
+service cloud.firestore {
+  match /databases/{database}/documents {
+    function signedIn() {
+      return request.auth != null;
+    }
+
+    function isOwner(userId) {
+      return signedIn() && request.auth.uid == userId;
+    }
+
+    function hasOnlyProfileFields() {
+      return request.resource.data.keys().hasOnly([
+        'uid',
+        'firstName',
+        'lastName',
+        'displayName',
+        'email',
+        'phone',
+        'role',
+        'photoURL',
+        'createdAt',
+        'updatedAt'
+      ]);
+    }
+
+    function validCustomerCreate(userId) {
+      return hasOnlyProfileFields()
+        && request.resource.data.uid == userId
+        && request.resource.data.role == 'customer'
+        && request.resource.data.email is string
+        && request.resource.data.firstName is string
+        && request.resource.data.lastName is string
+        && request.resource.data.displayName is string
+        && request.resource.data.phone is string
+        && (
+          request.resource.data.photoURL == null
+          || request.resource.data.photoURL is string
+        )
+        && request.resource.data.createdAt == request.time
+        && request.resource.data.updatedAt == request.time;
+    }
+
+    function validCustomerUpdate() {
+      return hasOnlyProfileFields()
+        && request.resource.data.uid == resource.data.uid
+        && request.resource.data.role == resource.data.role
+        && request.resource.data.createdAt == resource.data.createdAt
+        && request.resource.data.email == resource.data.email
+        && request.resource.data.diff(resource.data).affectedKeys().hasOnly([
+          'firstName',
+          'lastName',
+          'displayName',
+          'phone',
+          'photoURL',
+          'updatedAt'
+        ])
+        && request.resource.data.firstName is string
+        && request.resource.data.lastName is string
+        && request.resource.data.displayName is string
+        && request.resource.data.phone is string
+        && (
+          request.resource.data.photoURL == null
+          || request.resource.data.photoURL is string
+        )
+        && request.resource.data.updatedAt == request.time;
+    }
+
+    function isAdmin() {
+      return signedIn()
+        && get(/databases/$(database)/documents/users/$(request.auth.uid)).data.role == 'admin';
+    }
+
+    function hasOnlyProductFields() {
+      return request.resource.data.keys().hasOnly([
+        'name',
+        'slug',
+        'category',
+        'price',
+        'originalPrice',
+        'description',
+        'material',
+        'sizes',
+        'colors',
+        'images',
+        'stock',
+        'rating',
+        'reviewCount',
+        'featured',
+        'bestSeller',
+        'active',
+        'customizable',
+        'tags',
+        'createdAt',
+        'updatedAt'
+      ]);
+    }
+
+    function hasRequiredProductFields() {
+      return request.resource.data.keys().hasAll([
+        'name',
+        'slug',
+        'category',
+        'price',
+        'originalPrice',
+        'description',
+        'material',
+        'sizes',
+        'colors',
+        'images',
+        'stock',
+        'rating',
+        'reviewCount',
+        'featured',
+        'bestSeller',
+        'active',
+        'customizable',
+        'tags',
+        'createdAt',
+        'updatedAt'
+      ]);
+    }
+
+    function validProductData() {
+      return hasOnlyProductFields()
+        && hasRequiredProductFields()
+        && request.resource.data.name is string
+        && request.resource.data.name.size() > 0
+        && request.resource.data.slug is string
+        && request.resource.data.slug.size() > 0
+        && request.resource.data.category in ['vest', 'pajama', 'combo']
+        && request.resource.data.price is number
+        && request.resource.data.price >= 0
+        && (
+          request.resource.data.originalPrice == null
+          || (
+            request.resource.data.originalPrice is number
+            && request.resource.data.originalPrice >= request.resource.data.price
+          )
+        )
+        && request.resource.data.description is string
+        && request.resource.data.material is string
+        && request.resource.data.sizes is list
+        && request.resource.data.colors is list
+        && request.resource.data.images is list
+        && request.resource.data.stock is int
+        && request.resource.data.stock >= 0
+        && request.resource.data.rating is number
+        && request.resource.data.rating >= 0
+        && request.resource.data.rating <= 5
+        && request.resource.data.reviewCount is int
+        && request.resource.data.reviewCount >= 0
+        && request.resource.data.featured is bool
+        && request.resource.data.bestSeller is bool
+        && request.resource.data.active is bool
+        && request.resource.data.customizable is bool
+        && request.resource.data.tags is list;
+    }
+
+    function hasOnlyWishlistFields() {
+      return request.resource.data.keys().hasOnly([
+        'productId',
+        'name',
+        'price',
+        'image',
+        'category',
+        'addedAt'
+      ]);
+    }
+
+    function validWishlistData(productId) {
+      return hasOnlyWishlistFields()
+        && request.resource.data.productId == productId
+        && request.resource.data.name is string
+        && request.resource.data.price is number
+        && request.resource.data.image is string
+        && request.resource.data.category is string
+        && request.resource.data.addedAt == request.time;
+    }
+
+    function hasOnlyAddressFields() {
+      return request.resource.data.keys().hasOnly([
+        'id',
+        'fullName',
+        'phone',
+        'addressLine1',
+        'addressLine2',
+        'city',
+        'state',
+        'postalCode',
+        'country',
+        'type',
+        'isDefault',
+        'createdAt',
+        'updatedAt'
+      ]);
+    }
+
+    function hasRequiredAddressFields() {
+      return request.resource.data.keys().hasAll([
+        'id',
+        'fullName',
+        'phone',
+        'addressLine1',
+        'addressLine2',
+        'city',
+        'state',
+        'postalCode',
+        'country',
+        'type',
+        'isDefault',
+        'createdAt',
+        'updatedAt'
+      ]);
+    }
+
+    function validAddressData(addressId) {
+      return hasOnlyAddressFields()
+        && hasRequiredAddressFields()
+        && request.resource.data.id == addressId
+        && request.resource.data.fullName is string
+        && request.resource.data.fullName.size() > 0
+        && request.resource.data.phone is string
+        && request.resource.data.phone.size() > 0
+        && request.resource.data.addressLine1 is string
+        && request.resource.data.addressLine1.size() > 0
+        && request.resource.data.addressLine2 is string
+        && request.resource.data.city is string
+        && request.resource.data.city.size() > 0
+        && request.resource.data.state is string
+        && request.resource.data.state.size() > 0
+        && request.resource.data.postalCode is string
+        && request.resource.data.postalCode.size() > 0
+        && request.resource.data.country is string
+        && request.resource.data.country.size() > 0
+        && request.resource.data.type in ['home', 'work', 'other']
+        && request.resource.data.isDefault is bool;
+    }
+
+    function hasOnlyDesignFields() {
+      return request.resource.data.keys().hasOnly([
+        'id',
+        'productId',
+        'productName',
+        'baseColor',
+        'size',
+        'side',
+        'frontDesign',
+        'backDesign',
+        'previewImagePath',
+        'previewImageUrl',
+        'uploadedAssetPaths',
+        'uploadedAssetUrls',
+        'price',
+        'status',
+        'createdAt',
+        'updatedAt'
+      ]);
+    }
+
+    function hasRequiredDesignFields() {
+      return request.resource.data.keys().hasAll([
+        'id',
+        'productId',
+        'productName',
+        'baseColor',
+        'size',
+        'side',
+        'frontDesign',
+        'backDesign',
+        'previewImagePath',
+        'previewImageUrl',
+        'uploadedAssetPaths',
+        'uploadedAssetUrls',
+        'price',
+        'status',
+        'createdAt',
+        'updatedAt'
+      ]);
+    }
+
+    function validDesignData(designId) {
+      return hasOnlyDesignFields()
+        && hasRequiredDesignFields()
+        && request.resource.data.id == designId
+        && request.resource.data.productId is string
+        && request.resource.data.productId.size() > 0
+        && request.resource.data.productName is string
+        && request.resource.data.productName.size() > 0
+        && request.resource.data.baseColor is string
+        && request.resource.data.baseColor.size() > 0
+        && request.resource.data.size is string
+        && request.resource.data.size.size() > 0
+        && request.resource.data.side in ['front', 'back', 'both']
+        && (
+          request.resource.data.frontDesign == null
+          || request.resource.data.frontDesign is map
+        )
+        && (
+          request.resource.data.backDesign == null
+          || request.resource.data.backDesign is map
+        )
+        && (
+          request.resource.data.previewImagePath == null
+          || request.resource.data.previewImagePath is string
+        )
+        && (
+          request.resource.data.previewImageUrl == null
+          || request.resource.data.previewImageUrl is string
+        )
+        && request.resource.data.uploadedAssetPaths is list
+        && request.resource.data.uploadedAssetUrls is list
+        && request.resource.data.price is number
+        && request.resource.data.price >= 0
+        && request.resource.data.status in ['draft', 'saved'];
+    }
+
+    match /users/{userId} {
+      allow read: if isOwner(userId) || isAdmin();
+      allow create: if isOwner(userId) && validCustomerCreate(userId);
+      allow update: if isOwner(userId) && validCustomerUpdate();
+      allow delete: if false;
+    }
+
+    match /users/{userId}/wishlist/{productId} {
+      allow read: if isOwner(userId);
+      allow create, update: if isOwner(userId) && validWishlistData(productId);
+      allow delete: if isOwner(userId);
+    }
+
+    match /users/{userId}/addresses/{addressId} {
+      allow read: if isOwner(userId);
+      allow create: if isOwner(userId)
+        && validAddressData(addressId)
+        && request.resource.data.createdAt == request.time
+        && request.resource.data.updatedAt == request.time;
+      allow update: if isOwner(userId)
+        && validAddressData(addressId)
+        && request.resource.data.id == resource.data.id
+        && request.resource.data.createdAt == resource.data.createdAt
+        && request.resource.data.updatedAt == request.time;
+      allow delete: if isOwner(userId);
+    }
+
+    match /users/{userId}/designs/{designId} {
+      allow read: if isOwner(userId);
+      allow create: if isOwner(userId)
+        && validDesignData(designId)
+        && request.resource.data.createdAt == request.time
+        && request.resource.data.updatedAt == request.time;
+      allow update: if isOwner(userId)
+        && validDesignData(designId)
+        && request.resource.data.id == resource.data.id
+        && request.resource.data.createdAt == resource.data.createdAt
+        && request.resource.data.updatedAt == request.time;
+      allow delete: if isOwner(userId);
+    }
+
+    match /products/{productId} {
+      allow get, list: if isAdmin() || resource.data.active == true;
+      allow create: if isAdmin()
+        && validProductData()
+        && request.resource.data.createdAt == request.time
+        && request.resource.data.updatedAt == request.time;
+      allow update: if isAdmin()
+        && validProductData()
+        && request.resource.data.createdAt == resource.data.createdAt
+        && request.resource.data.updatedAt == request.time;
+      allow delete: if false;
+    }
+
+    match /products/{productId}/reviews/{reviewId} {
+      allow read: if true;
+      allow create, update, delete: if false;
+    }
+
+    match /orders/{orderId} {
+      allow read: if signedIn() && (resource.data.userId == request.auth.uid || isAdmin());
+      allow create, update: if false;
+      allow delete: if false;
+    }
+
+    match /emailNotifications/{notificationId} {
+      allow read, write: if false;
+    }
+  }
+}
