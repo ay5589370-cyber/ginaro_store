@@ -1,6 +1,7 @@
 import { useEffect, useId, useMemo, useRef, useState } from 'react'
 import { useLocation, useNavigate } from 'react-router-dom'
 import { useProducts } from '../context/useProducts.js'
+import { lockBodyScroll } from '../utils/bodyScrollLock.js'
 import { formatPrice } from '../utils/formatters.js'
 import {
   clearRecentSearches,
@@ -58,12 +59,11 @@ function SearchOverlay({ isOpen, onClose }) {
     if (!isOpen) return undefined
 
     const timer = window.setTimeout(() => inputRef.current?.focus(), 80)
-    const originalOverflow = document.body.style.overflow
-    document.body.style.overflow = 'hidden'
+    const unlockBodyScroll = lockBodyScroll()
 
     return () => {
       window.clearTimeout(timer)
-      document.body.style.overflow = originalOverflow
+      unlockBodyScroll()
     }
   }, [isOpen])
 

@@ -1,5 +1,5 @@
 import { getAdminAuth, getAdminFirestore, isFirebaseAdminConfigured } from './firebaseAdmin.js'
-import { createNvidiaChatCompletion } from './nvidiaClient.js'
+import { createGroqChatCompletion } from './groqClient.js'
 import {
   PRODUCT_COLLECTION,
   getProductCategoryLabel,
@@ -596,7 +596,7 @@ export async function handleAiShoppingAssistant(body, { uid = '' } = {}) {
   ]
 
   try {
-    const completion = await createNvidiaChatCompletion({
+    const completion = await createGroqChatCompletion({
       messages,
       user: uid ? `firebase:${uid}` : undefined,
     })
@@ -605,27 +605,38 @@ export async function handleAiShoppingAssistant(body, { uid = '' } = {}) {
 
     return {
       ...response,
-      provider: 'nvidia',
+      provider: 'groq',
       model: completion.model,
       baseUrl: completion.baseUrl,
       latencyMs: completion.latencyMs,
       fallback: false,
     }
   } catch (error) {
-    if (error.code === 'AI_CONFIG_MISSING') throw error
+    const fallbackReason = error.code || 'AI_PROVIDER_FAILED'
 
     console.warn('GINARO AI provider fallback', {
-      code: error.code || 'AI_PROVIDER_FAILED',
+      code: fallbackReason,
       providerStatus: error.providerStatus || null,
     })
 
+    const fallback = getDeterministicFallback({ request, candidates, filters, uid })
+    const fallbackIntro = {
+      AI_PROVIDER_RATE_LIMITED: 'AI is busy right now, so I used GINARO product search instead.',
+      AI_PROVIDER_AUTH_FAILED: 'AI provider authentication needs attention, so I used GINARO product search instead.',
+      AI_PROVIDER_MODEL_UNAVAILABLE: 'The configured AI model is unavailable, so I used GINARO product search instead.',
+      AI_PROVIDER_TIMEOUT: 'AI took too long to respond, so I used GINARO product search instead.',
+      AI_CONFIG_MISSING: 'AI is not configured yet, so I used GINARO product search instead.',
+      AI_PROVIDER_KEY_INVALID: 'AI provider configuration needs attention, so I used GINARO product search instead.',
+    }[fallbackReason]
+
     return {
-      ...getDeterministicFallback({ request, candidates, filters, uid }),
+      ...fallback,
+      reply: fallbackIntro ? `${fallbackIntro} ${fallback.reply}` : fallback.reply,
       provider: 'local-fallback',
       model: null,
       baseUrl: null,
       fallback: true,
-      fallbackReason: error.code || 'AI_PROVIDER_FAILED',
+      fallbackReason,
     }
   }
 }

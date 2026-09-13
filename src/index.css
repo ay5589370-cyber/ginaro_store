@@ -31,15 +31,32 @@
   box-sizing: border-box;
 }
 
+html,
+body {
+  margin: 0;
+  padding: 0;
+  width: 100%;
+  min-height: 100%;
+  overscroll-behavior-y: none;
+  background:
+    linear-gradient(180deg, rgba(255, 250, 240, 0.9), rgba(248, 244, 235, 0.95)),
+    var(--porcelain);
+}
+
 html {
-  overflow-x: hidden;
   scroll-behavior: smooth;
 }
 
 body {
-  margin: 0;
   min-width: 320px;
-  overflow-x: hidden;
+  overflow-y: auto;
+  -webkit-overflow-scrolling: touch;
+}
+
+#root {
+  width: 100%;
+  min-height: 100vh;
+  overflow-x: clip;
   background:
     linear-gradient(180deg, rgba(255, 250, 240, 0.9), rgba(248, 244, 235, 0.95)),
     var(--porcelain);

@@ -1,6 +1,6 @@
 # GINARO Storefront
 
-GINARO is a React + Vite e-commerce storefront backed by Firebase Authentication, Firestore, Supabase Storage, Vercel-style serverless APIs, NVIDIA NIM for the shopping assistant, and Resend for transactional email.
+GINARO is a React + Vite e-commerce storefront backed by Firebase Authentication, Firestore, Supabase Storage, Vercel-style serverless APIs, Groq for the shopping assistant, and Resend for transactional email.
 
 The store is Cash on Delivery only. Do not add browser-side payment keys or online-payment checkout without a separate security review.
 
@@ -11,7 +11,7 @@ The store is Cash on Delivery only. Do not add browser-side payment keys or onli
 - Firebase project with Authentication and Firestore
 - Supabase project with public product-image storage and private custom-design storage
 - Vercel CLI for local `/api` serverless testing
-- NVIDIA NIM API key and model ID for the AI shopping assistant
+- Groq API key and model ID for the AI shopping assistant
 - Resend API key and verified sender domain for production transactional email
 
 ## Install
@@ -42,24 +42,26 @@ Server variables:
 - `FIREBASE_ADMIN_PRIVATE_KEY`
 - `SUPABASE_URL`
 - `SUPABASE_SERVICE_ROLE_KEY`
-- `NVIDIA_API_KEY`
-- `NVIDIA_MODEL`
-- `NVIDIA_BASE_URL`
+- `GROQ_API_KEY`
+- `GROQ_MODEL`
+- `GROQ_BASE_URL`
 - `RESEND_API_KEY`
 - `EMAIL_FROM`
 - `ADMIN_NOTIFICATION_EMAIL`
 
-Never create `VITE_NVIDIA_API_KEY`, `VITE_RESEND_API_KEY`, or `VITE_SUPABASE_SERVICE_ROLE_KEY`.
+Never create `VITE_GROQ_API_KEY`, `VITE_RESEND_API_KEY`, or `VITE_SUPABASE_SERVICE_ROLE_KEY`.
 
 ## Local Development
 
-For frontend-only work:
+For frontend work and local API testing:
 
 ```bash
 npm run dev
 ```
 
-For flows that use `/api`, including checkout, cancellation, admin order updates, custom-design assets, reviews, AI chat, and transactional email:
+The Vite dev server mounts the existing `/api` handlers locally for checkout/orders, reviews, custom-design assets, admin order updates, and the Groq-backed shopping assistant without exposing server keys to React.
+
+For Vercel parity before deployment, also run:
 
 ```bash
 vercel dev
@@ -82,11 +84,11 @@ When adding a production or custom domain, verify it in Firebase Authentication 
 - Use signed URLs from the trusted backend for private custom-design assets.
 - Keep `SUPABASE_SERVICE_ROLE_KEY` server-side only.
 
-## NVIDIA Setup
+## Groq Setup
 
-- Configure `NVIDIA_API_KEY`, `NVIDIA_MODEL`, and `NVIDIA_BASE_URL` only in server environments.
+- Configure `GROQ_API_KEY`, `GROQ_MODEL`, and `GROQ_BASE_URL` only in server environments.
 - React calls only `/api/ai/chat`.
-- The server loads real Firestore products, narrows candidates, calls NVIDIA, validates structured JSON, and resolves final product facts from trusted product data.
+- The server loads real Firestore products, narrows candidates, calls Groq, validates structured JSON, and resolves final product facts from trusted product data.
 
 ## Email Setup
 

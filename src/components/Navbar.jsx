@@ -3,6 +3,7 @@ import { Link, useLocation } from 'react-router-dom'
 import { useAuth } from '../context/useAuth.js'
 import { useCart } from '../context/useCart.js'
 import { useWishlist } from '../context/useWishlist.js'
+import { lockBodyScroll } from '../utils/bodyScrollLock.js'
 import Icon from './Icon.jsx'
 import SearchOverlay from './SearchOverlay.jsx'
 
@@ -20,20 +21,17 @@ function Navbar() {
   const [isSearchOpen, setIsSearchOpen] = useState(false)
   const location = useLocation()
   const { cartCount } = useCart()
-  const { isLoggedIn, userProfile } = useAuth()
+  const { isLoggedIn, profileLoading, userProfile } = useAuth()
   const { wishlistCount } = useWishlist()
+  const accountHref = isLoggedIn && userProfile?.role === 'admin' ? '/admin' : isLoggedIn ? '/account/profile' : '/login'
+  const accountLabel = isLoggedIn && userProfile?.role === 'admin' ? 'Admin dashboard' : isLoggedIn ? 'Edit profile' : 'Login'
 
   const closeMenu = () => setIsMenuOpen(false)
 
   useEffect(() => {
     if (!isMenuOpen) return undefined
 
-    const originalOverflow = document.body.style.overflow
-    document.body.style.overflow = 'hidden'
-
-    return () => {
-      document.body.style.overflow = originalOverflow
-    }
+    return lockBodyScroll()
   }, [isMenuOpen])
 
   const getNavClassName = (item) => {
@@ -50,10 +48,21 @@ function Navbar() {
       <div className="announcement-bar">Free Shipping on Orders Above ₹999</div>
       <header className="site-header">
         <nav className="navbar section-shell" aria-label="Main navigation">
-          <Link className="brand-mark" to="/" onClick={closeMenu}>
-            <img src="/assets/logo.png" alt="GINARO official logo" />
-            <span>GINARO</span>
-          </Link>
+          <div className="brand-cluster">
+            <button
+              type="button"
+              className="menu-button"
+              aria-expanded={isMenuOpen}
+              aria-label={isMenuOpen ? 'Close menu' : 'Open menu'}
+              onClick={() => setIsMenuOpen((value) => !value)}
+            >
+              <Icon name={isMenuOpen ? 'x' : 'menu'} />
+            </button>
+            <Link className="brand-mark" to="/" onClick={closeMenu}>
+              <img src="/assets/logo.png" alt="GINARO official logo" />
+              <span>GINARO</span>
+            </Link>
+          </div>
 
           <div className={`nav-links ${isMenuOpen ? 'is-open' : ''}`}>
             {navItems.map((item) => (
@@ -81,22 +90,13 @@ function Navbar() {
               <Icon name="heart" />
               {wishlistCount > 0 && <span>{wishlistCount}</span>}
             </Link>
-            <Link to={isLoggedIn ? '/account' : '/login'} aria-label={isLoggedIn ? 'My account' : 'Login'} onClick={closeMenu}>
+            <Link to={accountHref} aria-label={accountLabel} aria-busy={isLoggedIn && profileLoading ? 'true' : undefined} onClick={closeMenu}>
               <Icon name="user" />
             </Link>
             <Link className="cart-button" to="/cart" aria-label={`Cart with ${cartCount} items`} onClick={closeMenu}>
               <Icon name="cart" />
               {cartCount > 0 && <span>{cartCount}</span>}
             </Link>
-            <button
-              type="button"
-              className="menu-button"
-              aria-expanded={isMenuOpen}
-              aria-label={isMenuOpen ? 'Close menu' : 'Open menu'}
-              onClick={() => setIsMenuOpen((value) => !value)}
-            >
-              <Icon name={isMenuOpen ? 'x' : 'menu'} />
-            </button>
           </div>
         </nav>
       </header>

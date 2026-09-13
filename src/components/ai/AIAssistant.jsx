@@ -5,6 +5,7 @@ import { useCart } from '../../context/useCart.js'
 import { useProducts } from '../../context/useProducts.js'
 import { useToast } from '../../context/useToast.js'
 import { useWishlist } from '../../context/useWishlist.js'
+import { lockBodyScroll } from '../../utils/bodyScrollLock.js'
 import { sendAssistantMessage } from '../../services/aiService.js'
 import { formatPrice } from '../../utils/formatters.js'
 import { parseShoppingCommand } from '../../utils/aiCommandParser.js'
@@ -158,11 +159,19 @@ function AIAssistant() {
   useEffect(() => {
     if (!isOpen) return undefined
 
-    const originalOverflow = document.body.style.overflow
-    document.body.style.overflow = 'hidden'
+    const mobileQuery = window.matchMedia('(max-width: 700px)')
+    let unlockBodyScroll = () => {}
+    const syncBodyScroll = () => {
+      unlockBodyScroll()
+      unlockBodyScroll = mobileQuery.matches ? lockBodyScroll() : () => {}
+    }
+
+    syncBodyScroll()
+    mobileQuery.addEventListener('change', syncBodyScroll)
 
     return () => {
-      document.body.style.overflow = originalOverflow
+      mobileQuery.removeEventListener('change', syncBodyScroll)
+      unlockBodyScroll()
     }
   }, [isOpen])
 

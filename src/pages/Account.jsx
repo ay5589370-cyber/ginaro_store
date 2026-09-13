@@ -45,6 +45,7 @@ function Account() {
     ...(userProfile?.role === 'admin'
       ? [{ label: 'Admin Dashboard', value: 'Manage Store', to: '/admin' }]
       : []),
+    { label: 'Profile Details', value: 'Edit Profile', to: '/account/profile' },
     { label: 'Recent Orders', value: `${orders.length} Orders`, to: '/account/orders' },
     { label: 'Wishlist Items', value: `${wishlistCount} Items`, to: '/account/wishlist' },
     { label: 'Saved Designs', value: `${designCount} Designs`, to: '/account/designs' },

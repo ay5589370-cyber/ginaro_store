@@ -1,17 +1,17 @@
-const DEFAULT_NVIDIA_BASE_URL = 'https://integrate.api.nvidia.com/v1'
-const NVIDIA_TIMEOUT_MS = 20000
+const DEFAULT_GROQ_BASE_URL = 'https://api.groq.com/openai/v1'
+const GROQ_TIMEOUT_MS = 20000
 
 function normalizeBaseUrl(value) {
-  return String(value || DEFAULT_NVIDIA_BASE_URL).replace(/\/+$/g, '')
+  return String(value || DEFAULT_GROQ_BASE_URL).replace(/\/+$/g, '')
 }
 
-function isProbablyNvidiaApiKey(value) {
-  return typeof value === 'string' && value.startsWith('nvapi-') && value.length > 'nvapi-'.length
+function isProbablyGroqApiKey(value) {
+  return typeof value === 'string' && value.startsWith('gsk_') && value.length > 'gsk_'.length
 }
 
-function requireNvidiaConfig() {
-  const apiKey = process.env.NVIDIA_API_KEY
-  const model = process.env.NVIDIA_MODEL
+function requireGroqConfig() {
+  const apiKey = process.env.GROQ_API_KEY
+  const model = process.env.GROQ_MODEL
 
   if (!apiKey || !model) {
     const error = new Error('AI assistant is not configured.')
@@ -20,7 +20,7 @@ function requireNvidiaConfig() {
     throw error
   }
 
-  if (!isProbablyNvidiaApiKey(apiKey)) {
+  if (!isProbablyGroqApiKey(apiKey)) {
     const error = new Error('AI assistant provider key is not configured correctly.')
     error.status = 503
     error.code = 'AI_PROVIDER_KEY_INVALID'
@@ -30,7 +30,7 @@ function requireNvidiaConfig() {
   return {
     apiKey,
     model,
-    baseUrl: normalizeBaseUrl(process.env.NVIDIA_BASE_URL),
+    baseUrl: normalizeBaseUrl(process.env.GROQ_BASE_URL),
   }
 }
 
@@ -63,16 +63,16 @@ async function readSafeProviderError(response) {
   if (!contentType.includes('application/json')) return null
 
   const payload = await response.json().catch(() => null)
-  const detail = payload?.detail || payload?.error?.message || payload?.title
+  const detail = payload?.error?.message || payload?.message
 
   return typeof detail === 'string' ? detail.slice(0, 180) : null
 }
 
-export async function createNvidiaChatCompletion({ messages, user }) {
+export async function createGroqChatCompletion({ messages, user }) {
   const startedAt = Date.now()
-  const { apiKey, model, baseUrl } = requireNvidiaConfig()
+  const { apiKey, model, baseUrl } = requireGroqConfig()
   const controller = new AbortController()
-  const timeout = setTimeout(() => controller.abort(), NVIDIA_TIMEOUT_MS)
+  const timeout = setTimeout(() => controller.abort(), GROQ_TIMEOUT_MS)
 
   try {
     const response = await fetch(`${baseUrl}/chat/completions`, {
@@ -86,7 +86,8 @@ export async function createNvidiaChatCompletion({ messages, user }) {
         model,
         messages,
         temperature: 0.3,
-        max_tokens: 700,
+        max_completion_tokens: 700,
+        response_format: { type: 'json_object' },
         stream: false,
         ...(user ? { user } : {}),
       }),
@@ -140,3 +141,4 @@ export async function createNvidiaChatCompletion({ messages, user }) {
     clearTimeout(timeout)
   }
 }
+

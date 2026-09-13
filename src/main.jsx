@@ -1,7 +1,7 @@
 import { StrictMode } from 'react'
 import { createRoot } from 'react-dom/client'
 import { BrowserRouter } from 'react-router-dom'
-import ErrorBoundary from './components/ErrorBoundary.jsx'
+import RouteErrorBoundary from './components/RouteErrorBoundary.jsx'
 import { AddressProvider } from './context/AddressContext.jsx'
 import { AuthProvider } from './context/AuthContext.jsx'
 import { CartProvider } from './context/CartContext.jsx'
@@ -16,8 +16,8 @@ import App from './App.jsx'
 
 createRoot(document.getElementById('root')).render(
   <StrictMode>
-    <ErrorBoundary>
-      <BrowserRouter>
+    <BrowserRouter>
+      <RouteErrorBoundary>
         <AuthProvider>
           <ToastProvider>
             <AddressProvider>
@@ -35,7 +35,7 @@ createRoot(document.getElementById('root')).render(
             </AddressProvider>
           </ToastProvider>
         </AuthProvider>
-      </BrowserRouter>
-    </ErrorBoundary>
+      </RouteErrorBoundary>
+    </BrowserRouter>
   </StrictMode>,
 )

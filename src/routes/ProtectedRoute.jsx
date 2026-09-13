@@ -4,9 +4,9 @@ import { useAuth } from '../context/useAuth.js'
 
 function ProtectedRoute({ children }) {
   const location = useLocation()
-  const { authLoading, isLoggedIn } = useAuth()
+  const { authLoading, isLoggedIn, profileLoading } = useAuth()
 
-  if (authLoading) {
+  if (authLoading || (isLoggedIn && profileLoading)) {
     return (
       <main className="section-shell page-loading">
         <LoadingSpinner label="Checking account" />

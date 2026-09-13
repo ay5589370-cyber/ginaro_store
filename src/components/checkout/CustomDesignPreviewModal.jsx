@@ -1,4 +1,5 @@
 import { useEffect } from 'react'
+import { lockBodyScroll } from '../../utils/bodyScrollLock.js'
 import { formatPrice } from '../../utils/formatters.js'
 import ProductImage from '../ProductImage.jsx'
 
@@ -6,16 +7,15 @@ function CustomDesignPreviewModal({ item, onClose }) {
   useEffect(() => {
     if (!item) return undefined
 
-    const originalOverflow = document.body.style.overflow
+    const unlockBodyScroll = lockBodyScroll()
     const handleKeyDown = (event) => {
       if (event.key === 'Escape') onClose()
     }
 
-    document.body.style.overflow = 'hidden'
     document.addEventListener('keydown', handleKeyDown)
 
     return () => {
-      document.body.style.overflow = originalOverflow
+      unlockBodyScroll()
       document.removeEventListener('keydown', handleKeyDown)
     }
   }, [item, onClose])

@@ -10,7 +10,7 @@ import { isValidEmail } from '../utils/authValidation.js'
 function Login() {
   const navigate = useNavigate()
   const location = useLocation()
-  const { authError, authLoading, isLoggedIn, login } = useAuth()
+  const { authError, authLoading, isLoggedIn, login, profileLoading, userProfile } = useAuth()
   const { showToast } = useToast()
   const [form, setForm] = useState({ email: '', password: '', remember: true })
   const [errors, setErrors] = useState({})
@@ -20,10 +20,10 @@ function Login() {
     : '/account'
 
   useEffect(() => {
-    if (!authLoading && isLoggedIn && !submitting) {
-      navigate('/account', { replace: true })
+    if (!authLoading && isLoggedIn && !profileLoading && !submitting) {
+      navigate(userProfile?.role === 'admin' ? '/admin' : '/account', { replace: true })
     }
-  }, [authLoading, isLoggedIn, navigate, submitting])
+  }, [authLoading, isLoggedIn, navigate, profileLoading, submitting, userProfile?.role])
 
   const updateField = (key, value) => {
     setForm((current) => ({ ...current, [key]: value }))
@@ -112,3 +112,5 @@ function Login() {
 }
 
 export default Login
+
+

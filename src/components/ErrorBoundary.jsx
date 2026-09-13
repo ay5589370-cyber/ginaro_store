@@ -10,6 +10,12 @@ class ErrorBoundary extends Component {
     return { hasError: true }
   }
 
+  componentDidUpdate(previousProps) {
+    if (this.state.hasError && previousProps.resetKey !== this.props.resetKey) {
+      this.setState({ hasError: false })
+    }
+  }
+
   componentDidCatch(error) {
     console.error('GINARO app error boundary caught an error', {
       name: error?.name,
@@ -39,3 +45,4 @@ class ErrorBoundary extends Component {
 }
 
 export default ErrorBoundary
+

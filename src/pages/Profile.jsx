@@ -1,5 +1,6 @@
 import { useMemo, useState } from 'react'
 import AccountLayout from '../components/account/AccountLayout.jsx'
+import ErrorState from '../components/ErrorState.jsx'
 import LoadingSpinner from '../components/LoadingSpinner.jsx'
 import { useAuth } from '../context/useAuth.js'
 import { useToast } from '../context/useToast.js'
@@ -131,6 +132,11 @@ function Profile() {
         <h2>Profile Information</h2>
         {profileLoading ? (
           <LoadingSpinner label="Loading profile" />
+        ) : !currentUser ? (
+          <ErrorState
+            title="Profile unavailable."
+            message="Please sign in again to edit your profile."
+          />
         ) : (
           <>
             {profileError && <p className="form-error" aria-live="polite">{profileError}</p>}
