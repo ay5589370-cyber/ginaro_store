@@ -133,6 +133,10 @@ function normalizeText(text) {
   }
 }
 
+function normalizeTransformValue(value, fallback, min, max) {
+  return Math.min(Math.max(toSafeNumber(value, fallback), min), max)
+}
+
 function normalizeSideDesign(sideDesign) {
   if (!sideDesign) return null
 
@@ -142,12 +146,19 @@ function normalizeSideDesign(sideDesign) {
 
   if (!template && !upload && !text) return null
 
+  const width = normalizeTransformValue(sideDesign.width, 45, 12, 96)
+  const height = normalizeTransformValue(sideDesign.height, 28, 12, 96)
+
   return {
     template,
     upload,
     text,
     position: toSafeString(sideDesign.position, 'center'),
     size: toSafeString(sideDesign.size, 'medium'),
+    x: normalizeTransformValue(sideDesign.x, 27.5, 0, 100 - width),
+    y: normalizeTransformValue(sideDesign.y, 36, 0, 100 - height),
+    width,
+    height,
   }
 }
 
@@ -364,3 +375,4 @@ export async function duplicateDesign(uid, designId) {
     status: 'saved',
   })
 }
+

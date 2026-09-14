@@ -16,15 +16,35 @@ const navItems = [
   { label: 'Customize Vest', to: '/customize' },
 ]
 
+function getProfileDisplayName(userProfile, currentUser) {
+  return userProfile?.firstName || userProfile?.displayName || currentUser?.displayName || userProfile?.email || currentUser?.email || 'Profile'
+}
+
+function getProfileInitials(nameOrEmail = '') {
+  const value = String(nameOrEmail).trim()
+  if (!value) return 'P'
+
+  const source = value.includes('@') ? value.split('@')[0] : value
+  return source
+    .split(/\s+/)
+    .filter(Boolean)
+    .slice(0, 2)
+    .map((part) => part.charAt(0).toUpperCase())
+    .join('') || 'P'
+}
+
 function Navbar() {
   const [isMenuOpen, setIsMenuOpen] = useState(false)
   const [isSearchOpen, setIsSearchOpen] = useState(false)
   const location = useLocation()
   const { cartCount } = useCart()
-  const { isLoggedIn, profileLoading, userProfile } = useAuth()
+  const { currentUser, isLoggedIn, profileLoading, userProfile } = useAuth()
   const { wishlistCount } = useWishlist()
+  const profileDisplayName = getProfileDisplayName(userProfile, currentUser)
+  const profileInitials = getProfileInitials(profileDisplayName)
+  const profileButtonText = userProfile?.role === 'admin' ? 'Admin' : profileDisplayName.split(/\s+/)[0] || 'Profile'
   const accountHref = isLoggedIn && userProfile?.role === 'admin' ? '/admin' : isLoggedIn ? '/account/profile' : '/login'
-  const accountLabel = isLoggedIn && userProfile?.role === 'admin' ? 'Admin dashboard' : isLoggedIn ? 'Edit profile' : 'Login'
+  const accountLabel = isLoggedIn && userProfile?.role === 'admin' ? 'Admin dashboard' : isLoggedIn ? 'Edit profile for ' + profileDisplayName : 'Login'
 
   const closeMenu = () => setIsMenuOpen(false)
 
@@ -90,8 +110,21 @@ function Navbar() {
               <Icon name="heart" />
               {wishlistCount > 0 && <span>{wishlistCount}</span>}
             </Link>
-            <Link to={accountHref} aria-label={accountLabel} aria-busy={isLoggedIn && profileLoading ? 'true' : undefined} onClick={closeMenu}>
-              <Icon name="user" />
+            <Link
+              className={`account-nav-button ${isLoggedIn ? 'is-profile' : ''}`}
+              to={accountHref}
+              aria-label={accountLabel}
+              aria-busy={isLoggedIn && profileLoading ? 'true' : undefined}
+              onClick={closeMenu}
+            >
+              {isLoggedIn && userProfile?.photoURL ? (
+                <img src={userProfile.photoURL} alt="" />
+              ) : isLoggedIn ? (
+                <span className="account-nav-initials" aria-hidden="true">{profileInitials}</span>
+              ) : (
+                <Icon name="user" />
+              )}
+              {isLoggedIn && <span className="account-nav-text">{profileButtonText}</span>}
             </Link>
             <Link className="cart-button" to="/cart" aria-label={`Cart with ${cartCount} items`} onClick={closeMenu}>
               <Icon name="cart" />
@@ -106,3 +139,8 @@ function Navbar() {
 }
 
 export default Navbar
+
+
+
+
+

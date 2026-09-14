@@ -2,7 +2,6 @@ import { useEffect, useMemo, useState } from 'react'
 import { Link, useSearchParams } from 'react-router-dom'
 import CustomizationSummary from '../components/customizer/CustomizationSummary.jsx'
 import CustomizerSteps from '../components/customizer/CustomizerSteps.jsx'
-import DesignControls from '../components/customizer/DesignControls.jsx'
 import DesignUploader from '../components/customizer/DesignUploader.jsx'
 import TemplateSelector from '../components/customizer/TemplateSelector.jsx'
 import TextEditor from '../components/customizer/TextEditor.jsx'
@@ -21,6 +20,55 @@ import { useToast } from '../context/useToast.js'
 import { getCustomDesignSignedUrl, uploadCustomDesign } from '../services/storageService.js'
 import { getCustomizationPricing, hasSideDesign } from '../utils/customizationPricing.js'
 
+const legacySizeDimensions = {
+  small: { width: 28, height: 18 },
+  medium: { width: 45, height: 28 },
+  large: { width: 66, height: 42 },
+}
+
+const legacyPositionCenters = {
+  center: { x: 50, y: 50 },
+  leftChest: { x: 31, y: 28 },
+  rightChest: { x: 69, y: 28 },
+  upperCenter: { x: 50, y: 32 },
+  lowerCenter: { x: 50, y: 70 },
+}
+
+function clampPercent(value, min, max) {
+  return Math.min(Math.max(value, min), max)
+}
+
+function toFiniteNumber(value, fallback) {
+  const number = Number(value)
+  return Number.isFinite(number) ? number : fallback
+}
+
+function getDefaultTransform(position = 'center', size = 'medium') {
+  const dimensions = legacySizeDimensions[size] || legacySizeDimensions.medium
+  const center = legacyPositionCenters[position] || legacyPositionCenters.center
+  const width = dimensions.width
+  const height = dimensions.height
+
+  return {
+    x: clampPercent(center.x - width / 2, 0, 100 - width),
+    y: clampPercent(center.y - height / 2, 0, 100 - height),
+    width,
+    height,
+  }
+}
+
+function normalizeManualTransform(sideDesign = {}) {
+  const fallback = getDefaultTransform(sideDesign.position, sideDesign.size)
+  const width = clampPercent(toFiniteNumber(sideDesign.width, fallback.width), 12, 96)
+  const height = clampPercent(toFiniteNumber(sideDesign.height, fallback.height), 12, 96)
+
+  return {
+    x: clampPercent(toFiniteNumber(sideDesign.x, fallback.x), 0, 100 - width),
+    y: clampPercent(toFiniteNumber(sideDesign.y, fallback.y), 0, 100 - height),
+    width,
+    height,
+  }
+}
 function createTextDesign() {
   return {
     value: '',
@@ -41,6 +89,7 @@ function createSideDesign() {
     text: createTextDesign(),
     position: 'center',
     size: 'medium',
+    ...getDefaultTransform('center', 'medium'),
   }
 }
 
@@ -96,6 +145,10 @@ function serializeSideDesign(sideDesign) {
       : null,
     position: sideDesign.position,
     size: sideDesign.size,
+    x: sideDesign.x,
+    y: sideDesign.y,
+    width: sideDesign.width,
+    height: sideDesign.height,
   }
 }
 
@@ -158,6 +211,7 @@ function deserializeSideDesign(sideDesign) {
     text: deserializeTextDesign(sideDesign.text),
     position: sideDesign.position || 'center',
     size: sideDesign.size || 'medium',
+    ...normalizeManualTransform(sideDesign),
   }
 }
 
@@ -623,16 +677,7 @@ function CustomizeVest() {
                 }
               />
 
-              <DesignControls
-                position={activeSideDesign.position}
-                size={activeSideDesign.size}
-                onChangePosition={(position) =>
-                  updateActiveSide((sideDesign) => ({ ...sideDesign, position }))
-                }
-                onChangeSize={(size) =>
-                  updateActiveSide((sideDesign) => ({ ...sideDesign, size }))
-                }
-              />
+
             </div>
 
             <VestPreview
@@ -641,6 +686,9 @@ function CustomizeVest() {
               activeView={activeView}
               onChangeView={setActiveView}
               sideDesign={activeSideDesign}
+              onChangeTransform={(transform) =>
+                updateActiveSide((sideDesign) => ({ ...sideDesign, ...transform }))
+              }
             />
 
             <CustomizationSummary
@@ -673,3 +721,6 @@ function CustomizeVest() {
 }
 
 export default CustomizeVest
+
+
+
