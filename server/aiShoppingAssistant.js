@@ -1,5 +1,6 @@
 import { getAdminAuth, getAdminFirestore, isFirebaseAdminConfigured } from './firebaseAdmin.js'
 import { createGroqChatCompletion, getGroqConfigStatus } from './groqClient.js'
+import { products as localProducts } from '../src/data/products.js'
 import {
   PRODUCT_COLLECTION,
   getProductCategoryLabel,
@@ -174,24 +175,49 @@ function normalizeFirestoreDate(value) {
   return null
 }
 
-async function loadActiveProductsFromFirestore() {
-  if (!isFirebaseAdminConfigured()) {
-    throw createHttpError(503, 'PRODUCT_DATA_UNAVAILABLE', 'Product data is unavailable.')
-  }
-
-  const snapshot = await getAdminFirestore()
-    .collection(PRODUCT_COLLECTION)
-    .where('active', '==', true)
-    .get()
-
-  return snapshot.docs
-    .map((productDoc) => normalizeProductForClient(productDoc.id, productDoc.data()))
+function getLocalCatalogProducts() {
+  return localProducts
+    .map((product) => normalizeProductForClient(product.id, product))
     .filter(isCustomerVisibleProduct)
     .map((product) => ({
       ...product,
       createdAt: normalizeFirestoreDate(product.createdAt),
       updatedAt: normalizeFirestoreDate(product.updatedAt),
     }))
+}
+
+async function loadActiveProductsFromFirestore() {
+  if (!isFirebaseAdminConfigured()) {
+    console.warn('GINARO AI product catalog fallback', {
+      code: 'SERVER_CONFIG_MISSING',
+      source: 'local-catalog',
+      firebaseAdminConfigured: false,
+    })
+    return getLocalCatalogProducts()
+  }
+
+  try {
+    const snapshot = await getAdminFirestore()
+      .collection(PRODUCT_COLLECTION)
+      .where('active', '==', true)
+      .get()
+
+    return snapshot.docs
+      .map((productDoc) => normalizeProductForClient(productDoc.id, productDoc.data()))
+      .filter(isCustomerVisibleProduct)
+      .map((product) => ({
+        ...product,
+        createdAt: normalizeFirestoreDate(product.createdAt),
+        updatedAt: normalizeFirestoreDate(product.updatedAt),
+      }))
+  } catch (error) {
+    console.warn('GINARO AI product catalog fallback', {
+      code: error.code || 'PRODUCT_DATA_UNAVAILABLE',
+      source: 'local-catalog',
+      firebaseAdminConfigured: true,
+    })
+    return getLocalCatalogProducts()
+  }
 }
 
 function extractPriceFilter(text) {

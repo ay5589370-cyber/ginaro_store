@@ -448,7 +448,12 @@ function AIAssistant() {
       })
 
       appendAssistantMessage(buildServerResponseMessage(response))
-    } catch {
+    } catch (error) {
+      console.warn('GINARO AI service unavailable', {
+        code: error.code || 'AI_CHAT_FAILED',
+        status: error.status || null,
+      })
+
       const fallbackResponse = buildResponse(parseShoppingCommand(text, products, { currentProduct }))
       appendAssistantMessage({
         ...fallbackResponse,
