@@ -9,14 +9,31 @@ function isProbablyGroqApiKey(value) {
   return typeof value === 'string' && value.startsWith('gsk_') && value.length > 'gsk_'.length
 }
 
+export function getGroqConfigStatus() {
+  const apiKey = process.env.GROQ_API_KEY
+
+  return {
+    hasGroqApiKey: Boolean(apiKey),
+    groqApiKeyLooksValid: isProbablyGroqApiKey(apiKey),
+    hasGroqModel: Boolean(process.env.GROQ_MODEL),
+    hasCustomGroqBaseUrl: Boolean(process.env.GROQ_BASE_URL),
+  }
+}
+
 function requireGroqConfig() {
   const apiKey = process.env.GROQ_API_KEY
   const model = process.env.GROQ_MODEL
+  const configStatus = getGroqConfigStatus()
 
   if (!apiKey || !model) {
     const error = new Error('AI assistant is not configured.')
     error.status = 503
     error.code = 'AI_CONFIG_MISSING'
+    error.configStatus = configStatus
+    error.missingConfig = [
+      !apiKey ? 'GROQ_API_KEY' : '',
+      !model ? 'GROQ_MODEL' : '',
+    ].filter(Boolean)
     throw error
   }
 
@@ -24,6 +41,7 @@ function requireGroqConfig() {
     const error = new Error('AI assistant provider key is not configured correctly.')
     error.status = 503
     error.code = 'AI_PROVIDER_KEY_INVALID'
+    error.configStatus = configStatus
     throw error
   }
 

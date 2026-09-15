@@ -1,5 +1,5 @@
 import { getAdminAuth, getAdminFirestore, isFirebaseAdminConfigured } from './firebaseAdmin.js'
-import { createGroqChatCompletion } from './groqClient.js'
+import { createGroqChatCompletion, getGroqConfigStatus } from './groqClient.js'
 import {
   PRODUCT_COLLECTION,
   getProductCategoryLabel,
@@ -46,6 +46,16 @@ function createHttpError(status, code, message) {
   error.status = status
   error.code = code
   return error
+}
+
+function safeLogText(value) {
+  if (typeof value !== 'string') return null
+
+  return value
+    .replace(/gsk_[A-Za-z0-9_-]+/g, '[REDACTED_GROQ_KEY]')
+    .replace(/Bearer\s+[A-Za-z0-9._~+/=-]+/gi, 'Bearer [REDACTED_TOKEN]')
+    .replace(/eyJ[A-Za-z0-9._-]+/g, '[REDACTED_TOKEN]')
+    .slice(0, 180)
 }
 
 function toSafeString(value, fallback = '') {
@@ -616,7 +626,12 @@ export async function handleAiShoppingAssistant(body, { uid = '' } = {}) {
 
     console.warn('GINARO AI provider fallback', {
       code: fallbackReason,
+      status: error.status || null,
       providerStatus: error.providerStatus || null,
+      providerDetail: safeLogText(error.providerDetail),
+      latencyMs: error.latencyMs || null,
+      missingConfig: Array.isArray(error.missingConfig) ? error.missingConfig : [],
+      config: error.configStatus || getGroqConfigStatus(),
     })
 
     const fallback = getDeterministicFallback({ request, candidates, filters, uid })

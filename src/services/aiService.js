@@ -64,8 +64,13 @@ export async function sendAssistantMessage({
   }
 
   if (!response.ok || !payload?.success) {
-    const error = new Error(payload?.error?.message || "Sorry, I couldn't process that right now.")
-    error.code = payload?.error?.code || 'AI_CHAT_FAILED'
+    const message = payload?.error?.message
+      || (response.status === 404
+        ? 'AI assistant endpoint is unavailable. Please try again shortly.'
+        : "Sorry, I couldn't process that right now.")
+    const error = new Error(message)
+    error.code = payload?.error?.code || `AI_CHAT_HTTP_${response.status || 'FAILED'}`
+    error.status = response.status
     throw error
   }
 
