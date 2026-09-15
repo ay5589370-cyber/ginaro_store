@@ -1,6 +1,5 @@
 import { getAdminAuth, getAdminFirestore, isFirebaseAdminConfigured } from './firebaseAdmin.js'
 import { createGroqChatCompletion, getGroqConfigStatus } from './groqClient.js'
-import { products as localProducts } from '../src/data/products.js'
 import {
   PRODUCT_COLLECTION,
   getProductCategoryLabel,
@@ -140,11 +139,11 @@ function normalizeBody(body = {}) {
   const message = toSafeString(body.message)
 
   if (!message) {
-    throw createHttpError(400, 'AI_MESSAGE_REQUIRED', 'Enter a message for the assistant.')
+    throw createHttpError(400, 'INVALID_REQUEST', 'Enter a message for the assistant.')
   }
 
   if (message.length > MAX_MESSAGE_LENGTH) {
-    throw createHttpError(413, 'AI_MESSAGE_TOO_LONG', 'Please keep assistant messages under 1500 characters.')
+    throw createHttpError(413, 'INVALID_REQUEST', 'Please keep assistant messages under 1500 characters.')
   }
 
   return {
@@ -175,25 +174,19 @@ function normalizeFirestoreDate(value) {
   return null
 }
 
-function getLocalCatalogProducts() {
-  return localProducts
-    .map((product) => normalizeProductForClient(product.id, product))
-    .filter(isCustomerVisibleProduct)
-    .map((product) => ({
-      ...product,
-      createdAt: normalizeFirestoreDate(product.createdAt),
-      updatedAt: normalizeFirestoreDate(product.updatedAt),
-    }))
-}
-
 async function loadActiveProductsFromFirestore() {
   if (!isFirebaseAdminConfigured()) {
-    console.warn('GINARO AI product catalog fallback', {
-      code: 'SERVER_CONFIG_MISSING',
-      source: 'local-catalog',
-      firebaseAdminConfigured: false,
+    const error = createHttpError(500, 'PRODUCT_CATALOG_ERROR', 'Product catalog could not be loaded')
+    error.stage = 'products'
+    error.firestoreCode = 'SERVER_CONFIG_MISSING'
+    console.error('[AI FIRESTORE ERROR]', {
+      stage: 'products',
+      status: error.status,
+      code: error.code,
+      firestoreCode: error.firestoreCode,
+      message: error.message,
     })
-    return getLocalCatalogProducts()
+    throw error
   }
 
   try {
@@ -211,12 +204,17 @@ async function loadActiveProductsFromFirestore() {
         updatedAt: normalizeFirestoreDate(product.updatedAt),
       }))
   } catch (error) {
-    console.warn('GINARO AI product catalog fallback', {
-      code: error.code || 'PRODUCT_DATA_UNAVAILABLE',
-      source: 'local-catalog',
-      firebaseAdminConfigured: true,
+    const catalogError = createHttpError(502, 'PRODUCT_CATALOG_ERROR', 'Product catalog could not be loaded')
+    catalogError.stage = 'products'
+    catalogError.firestoreCode = error.code || 'FIRESTORE_ERROR'
+    console.error('[AI FIRESTORE ERROR]', {
+      stage: 'products',
+      status: catalogError.status,
+      code: catalogError.code,
+      firestoreCode: catalogError.firestoreCode,
+      message: catalogError.message,
     })
-    return getLocalCatalogProducts()
+    throw catalogError
   }
 }
 
@@ -460,13 +458,13 @@ function parseModelJson(content) {
   } catch {
     const match = content.match(/\{[\s\S]*\}/)
     if (!match) {
-      throw createHttpError(502, 'AI_INVALID_JSON', 'Assistant returned an invalid response.')
+      throw createHttpError(502, 'GROQ_PROVIDER_ERROR', 'Groq returned an invalid response.')
     }
 
     try {
       return JSON.parse(match[0])
     } catch {
-      throw createHttpError(502, 'AI_INVALID_JSON', 'Assistant returned an invalid response.')
+      throw createHttpError(502, 'GROQ_PROVIDER_ERROR', 'Groq returned an invalid response.')
     }
   }
 }
@@ -554,6 +552,8 @@ function validateAssistantResponse(raw, candidates, filters) {
   }
 }
 
+// Kept for restoring local fallback after this temporary diagnostics pass.
+// eslint-disable-next-line no-unused-vars
 function getDeterministicFallback({ request, candidates, filters, uid }) {
   const isOrderQuestion = /\b(order|track|tracking|delivery|status)\b/.test(normalizeText(request.message))
   const isCustomQuestion = /\b(custom|customize|customise|design|upload)\b/.test(normalizeText(request.message))
@@ -622,7 +622,17 @@ function getDeterministicFallback({ request, candidates, filters, uid }) {
 
 export async function handleAiShoppingAssistant(body, { uid = '' } = {}) {
   const request = normalizeBody(body)
+  console.log('[AI] Input validated', {
+    historyCount: request.history.length,
+    hasCurrentProduct: Boolean(request.currentProductId),
+  })
+
   const products = await loadActiveProductsFromFirestore()
+  console.log('[AI] Products loaded', {
+    count: products.length,
+    source: 'firestore',
+  })
+
   const filters = buildConversationFilters(request.message, request.history)
   const candidates = buildCandidateProducts({ request, products, filters })
   const messages = [
@@ -637,7 +647,17 @@ export async function handleAiShoppingAssistant(body, { uid = '' } = {}) {
       user: uid ? `firebase:${uid}` : undefined,
     })
     const rawResponse = parseModelJson(completion.content)
+    console.log('[AI] Response validated', {
+      provider: 'groq',
+      model: completion.model,
+    })
+
     const response = validateAssistantResponse(rawResponse, candidates, filters)
+    console.log('[AI] Request completed', {
+      provider: 'groq',
+      model: completion.model,
+      latencyMs: completion.latencyMs,
+    })
 
     return {
       ...response,
@@ -648,36 +668,18 @@ export async function handleAiShoppingAssistant(body, { uid = '' } = {}) {
       fallback: false,
     }
   } catch (error) {
-    const fallbackReason = error.code || 'AI_PROVIDER_FAILED'
-
-    console.warn('GINARO AI provider fallback', {
-      code: fallbackReason,
-      status: error.status || null,
+    console.error('[AI API ERROR]', {
+      stage: error.stage || 'groq',
+      status: error.status || 500,
+      provider: 'groq',
+      code: error.code || 'INTERNAL_ERROR',
       providerStatus: error.providerStatus || null,
-      providerDetail: safeLogText(error.providerDetail),
+      message: safeLogText(error.providerDetail || error.message) || 'AI request failed',
       latencyMs: error.latencyMs || null,
       missingConfig: Array.isArray(error.missingConfig) ? error.missingConfig : [],
       config: error.configStatus || getGroqConfigStatus(),
     })
 
-    const fallback = getDeterministicFallback({ request, candidates, filters, uid })
-    const fallbackIntro = {
-      AI_PROVIDER_RATE_LIMITED: 'AI is busy right now, so I used GINARO product search instead.',
-      AI_PROVIDER_AUTH_FAILED: 'AI provider authentication needs attention, so I used GINARO product search instead.',
-      AI_PROVIDER_MODEL_UNAVAILABLE: 'The configured AI model is unavailable, so I used GINARO product search instead.',
-      AI_PROVIDER_TIMEOUT: 'AI took too long to respond, so I used GINARO product search instead.',
-      AI_CONFIG_MISSING: 'AI is not configured yet, so I used GINARO product search instead.',
-      AI_PROVIDER_KEY_INVALID: 'AI provider configuration needs attention, so I used GINARO product search instead.',
-    }[fallbackReason]
-
-    return {
-      ...fallback,
-      reply: fallbackIntro ? `${fallbackIntro} ${fallback.reply}` : fallback.reply,
-      provider: 'local-fallback',
-      model: null,
-      baseUrl: null,
-      fallback: true,
-      fallbackReason,
-    }
+    throw error
   }
 }

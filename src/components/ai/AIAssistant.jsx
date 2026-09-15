@@ -452,12 +452,13 @@ function AIAssistant() {
       console.warn('GINARO AI service unavailable', {
         code: error.code || 'AI_CHAT_FAILED',
         status: error.status || null,
+        message: error.safeMessage || error.message || 'AI request failed',
       })
 
       const fallbackResponse = buildResponse(parseShoppingCommand(text, products, { currentProduct }))
       appendAssistantMessage({
         ...fallbackResponse,
-        text: `${fallbackResponse.text} Sorry, I couldn't reach the AI service right now, so I used the basic store assistant.`,
+        text: `${error.displayMessage || 'AI network request failed.'} ${fallbackResponse.text}`,
       })
     } finally {
       setIsTyping(false)

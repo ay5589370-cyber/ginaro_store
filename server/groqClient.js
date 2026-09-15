@@ -9,15 +9,35 @@ function isProbablyGroqApiKey(value) {
   return typeof value === 'string' && value.startsWith('gsk_') && value.length > 'gsk_'.length
 }
 
+function safeProviderMessage(value, fallback = 'Groq request failed') {
+  if (typeof value !== 'string' || !value.trim()) return fallback
+
+  return value
+    .replace(/gsk_[A-Za-z0-9_-]+/g, '[REDACTED_GROQ_KEY]')
+    .replace(/Bearer\s+[A-Za-z0-9._~+/=-]+/gi, 'Bearer [REDACTED_TOKEN]')
+    .replace(/eyJ[A-Za-z0-9._-]+/g, '[REDACTED_TOKEN]')
+    .slice(0, 180)
+}
+
 export function getGroqConfigStatus() {
   const apiKey = process.env.GROQ_API_KEY
+  const model = process.env.GROQ_MODEL || ''
 
   return {
+    hasGroqKey: Boolean(apiKey),
     hasGroqApiKey: Boolean(apiKey),
     groqApiKeyLooksValid: isProbablyGroqApiKey(apiKey),
-    hasGroqModel: Boolean(process.env.GROQ_MODEL),
+    hasGroqModel: Boolean(model),
     hasCustomGroqBaseUrl: Boolean(process.env.GROQ_BASE_URL),
+    model,
   }
+}
+
+function createProviderError(status, code, message) {
+  const error = new Error(message)
+  error.status = status
+  error.code = code
+  return error
 }
 
 function requireGroqConfig() {
@@ -25,22 +45,22 @@ function requireGroqConfig() {
   const model = process.env.GROQ_MODEL
   const configStatus = getGroqConfigStatus()
 
-  if (!apiKey || !model) {
-    const error = new Error('AI assistant is not configured.')
-    error.status = 503
-    error.code = 'AI_CONFIG_MISSING'
+  if (!apiKey) {
+    const error = createProviderError(500, 'GROQ_KEY_MISSING', 'AI server configuration is missing')
     error.configStatus = configStatus
-    error.missingConfig = [
-      !apiKey ? 'GROQ_API_KEY' : '',
-      !model ? 'GROQ_MODEL' : '',
-    ].filter(Boolean)
+    error.missingConfig = ['GROQ_API_KEY']
+    throw error
+  }
+
+  if (!model) {
+    const error = createProviderError(500, 'GROQ_MODEL_ERROR', 'Groq model is not configured')
+    error.configStatus = configStatus
+    error.missingConfig = ['GROQ_MODEL']
     throw error
   }
 
   if (!isProbablyGroqApiKey(apiKey)) {
-    const error = new Error('AI assistant provider key is not configured correctly.')
-    error.status = 503
-    error.code = 'AI_PROVIDER_KEY_INVALID'
+    const error = createProviderError(401, 'GROQ_AUTH_ERROR', 'Groq API key format is invalid')
     error.configStatus = configStatus
     throw error
   }
@@ -52,38 +72,33 @@ function requireGroqConfig() {
   }
 }
 
-function createProviderError(status, code, message) {
-  const error = new Error(message)
-  error.status = status
-  error.code = code
-  return error
-}
-
 function normalizeProviderStatus(status) {
-  if (status === 401 || status === 403) return 503
-  if (status === 404 || status === 410) return 503
+  if (status === 401 || status === 403) return 401
+  if (status === 404 || status === 410) return 404
   if (status === 429) return 429
-  if (status >= 500) return 503
+  if (status >= 500) return 502
   return 502
 }
 
 function getProviderErrorCode(status) {
-  if (status === 401 || status === 403) return 'AI_PROVIDER_AUTH_FAILED'
-  if (status === 404 || status === 410) return 'AI_PROVIDER_MODEL_UNAVAILABLE'
-  if (status === 429) return 'AI_PROVIDER_RATE_LIMITED'
-  if (status >= 500) return 'AI_PROVIDER_UNAVAILABLE'
-  return 'AI_PROVIDER_FAILED'
+  if (status === 401 || status === 403) return 'GROQ_AUTH_ERROR'
+  if (status === 404 || status === 410) return 'GROQ_MODEL_ERROR'
+  if (status === 429) return 'GROQ_RATE_LIMIT'
+  if (status >= 500) return 'GROQ_PROVIDER_ERROR'
+  return 'GROQ_PROVIDER_ERROR'
 }
 
 async function readSafeProviderError(response) {
   const contentType = response.headers.get('content-type') || ''
 
-  if (!contentType.includes('application/json')) return null
+  if (!contentType.includes('application/json')) {
+    const text = await response.text().catch(() => '')
+    return safeProviderMessage(text, 'Groq request failed')
+  }
 
   const payload = await response.json().catch(() => null)
-  const detail = payload?.error?.message || payload?.message
-
-  return typeof detail === 'string' ? detail.slice(0, 180) : null
+  const detail = payload?.error?.message || payload?.error?.code || payload?.message
+  return safeProviderMessage(detail, 'Groq request failed')
 }
 
 export async function createGroqChatCompletion({ messages, user }) {
@@ -91,6 +106,11 @@ export async function createGroqChatCompletion({ messages, user }) {
   const { apiKey, model, baseUrl } = requireGroqConfig()
   const controller = new AbortController()
   const timeout = setTimeout(() => controller.abort(), GROQ_TIMEOUT_MS)
+
+  console.log('[AI] Sending request to Groq', {
+    provider: 'groq',
+    model,
+  })
 
   try {
     const response = await fetch(`${baseUrl}/chat/completions`, {
@@ -111,16 +131,34 @@ export async function createGroqChatCompletion({ messages, user }) {
       }),
     })
 
+    console.log('[AI] Groq response received', {
+      provider: 'groq',
+      status: response.status,
+      ok: response.ok,
+      latencyMs: Date.now() - startedAt,
+    })
+
     if (!response.ok) {
       const providerDetail = await readSafeProviderError(response)
+      const code = getProviderErrorCode(response.status)
       const error = createProviderError(
         normalizeProviderStatus(response.status),
-        getProviderErrorCode(response.status),
-        'AI assistant is temporarily unavailable.',
+        code,
+        providerDetail || 'Groq request failed',
       )
       error.latencyMs = Date.now() - startedAt
       error.providerStatus = response.status
       error.providerDetail = providerDetail
+      error.providerCode = code
+
+      console.error('[AI GROQ ERROR]', {
+        provider: 'groq',
+        status: response.status,
+        code,
+        message: providerDetail,
+        latencyMs: error.latencyMs,
+      })
+
       throw error
     }
 
@@ -130,8 +168,8 @@ export async function createGroqChatCompletion({ messages, user }) {
     if (!content) {
       const error = createProviderError(
         502,
-        'AI_EMPTY_RESPONSE',
-        'AI assistant returned an empty response.',
+        'GROQ_PROVIDER_ERROR',
+        'Groq returned an empty response',
       )
       error.latencyMs = Date.now() - startedAt
       throw error
@@ -147,11 +185,35 @@ export async function createGroqChatCompletion({ messages, user }) {
     if (error.name === 'AbortError') {
       const timeoutError = createProviderError(
         504,
-        'AI_PROVIDER_TIMEOUT',
-        'AI assistant is temporarily unavailable.',
+        'AI_TIMEOUT',
+        'AI provider request timed out',
       )
       timeoutError.latencyMs = Date.now() - startedAt
+      console.error('[AI GROQ ERROR]', {
+        provider: 'groq',
+        status: 504,
+        code: timeoutError.code,
+        message: timeoutError.message,
+        latencyMs: timeoutError.latencyMs,
+      })
       throw timeoutError
+    }
+
+    if (!error.code) {
+      const providerError = createProviderError(
+        502,
+        'GROQ_PROVIDER_ERROR',
+        safeProviderMessage(error.message, 'Groq request failed'),
+      )
+      providerError.latencyMs = Date.now() - startedAt
+      console.error('[AI GROQ ERROR]', {
+        provider: 'groq',
+        status: providerError.status,
+        code: providerError.code,
+        message: providerError.message,
+        latencyMs: providerError.latencyMs,
+      })
+      throw providerError
     }
 
     throw error
@@ -159,4 +221,3 @@ export async function createGroqChatCompletion({ messages, user }) {
     clearTimeout(timeout)
   }
 }
-

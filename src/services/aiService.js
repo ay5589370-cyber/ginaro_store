@@ -35,6 +35,13 @@ async function getFirebaseToken(currentUser) {
   }
 }
 
+function getParsedErrorMessage(payload, fallback) {
+  if (typeof payload?.error === 'string') return payload.error
+  if (typeof payload?.error?.message === 'string') return payload.error.message
+  if (typeof payload?.message === 'string') return payload.message
+  return fallback
+}
+
 export async function sendAssistantMessage({
   message,
   messages = [],
@@ -42,18 +49,29 @@ export async function sendAssistantMessage({
   context = {},
 }) {
   const token = await getFirebaseToken(currentUser)
-  const response = await fetch(AI_CHAT_ENDPOINT, {
-    method: 'POST',
-    headers: {
-      'Content-Type': 'application/json',
-      ...(token ? { Authorization: `Bearer ${token}` } : {}),
-    },
-    body: JSON.stringify({
-      message,
-      history: getSafeHistory(messages),
-      context,
-    }),
-  })
+  let response
+
+  try {
+    response = await fetch(AI_CHAT_ENDPOINT, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        ...(token ? { Authorization: `Bearer ${token}` } : {}),
+      },
+      body: JSON.stringify({
+        message,
+        history: getSafeHistory(messages),
+        context,
+      }),
+    })
+  } catch (error) {
+    console.error('[AI NETWORK ERROR]', error)
+    const networkError = new Error('AI network request failed.')
+    networkError.code = 'AI_NETWORK_ERROR'
+    networkError.status = 0
+    networkError.displayMessage = 'AI network request failed.'
+    throw networkError
+  }
 
   let payload
 
@@ -64,13 +82,27 @@ export async function sendAssistantMessage({
   }
 
   if (!response.ok || !payload?.success) {
-    const message = payload?.error?.message
-      || (response.status === 404
-        ? 'AI assistant endpoint is unavailable. Please try again shortly.'
-        : "Sorry, I couldn't process that right now.")
-    const error = new Error(message)
-    error.code = payload?.error?.code || `AI_CHAT_HTTP_${response.status || 'FAILED'}`
+    const parsedErrorMessage = getParsedErrorMessage(
+      payload,
+      response.status === 404
+        ? 'AI API endpoint not found'
+        : "Sorry, I couldn't process that right now.",
+    )
+
+    console.error('AI request failed', {
+      status: response.status,
+      statusText: response.statusText,
+      endpoint: AI_CHAT_ENDPOINT,
+      error: parsedErrorMessage,
+    })
+
+    const error = new Error(`AI Error (${response.status}): ${parsedErrorMessage}`)
+    error.code = payload?.code || payload?.error?.code || `AI_CHAT_HTTP_${response.status || 'FAILED'}`
     error.status = response.status
+    error.statusText = response.statusText
+    error.endpoint = AI_CHAT_ENDPOINT
+    error.safeMessage = parsedErrorMessage
+    error.displayMessage = `AI Error (${response.status}): ${parsedErrorMessage}`
     throw error
   }
 
