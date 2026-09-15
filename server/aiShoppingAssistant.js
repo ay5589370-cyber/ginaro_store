@@ -1,4 +1,4 @@
-import { getAdminAuth, getAdminFirestore, isFirebaseAdminConfigured } from './firebaseAdmin.js'
+import { products as localProducts } from '../src/data/products.js'
 import { createGroqChatCompletion, getGroqConfigStatus } from './groqClient.js'
 import {
   PRODUCT_COLLECTION,
@@ -79,6 +79,31 @@ function getClientIp(req) {
   return req.socket?.remoteAddress || 'anonymous'
 }
 
+function hasFirebaseAdminCredentials() {
+  return Boolean(
+    (process.env.FIREBASE_ADMIN_PROJECT_ID || process.env.FIREBASE_PROJECT_ID)
+      && (process.env.FIREBASE_ADMIN_CLIENT_EMAIL || process.env.FIREBASE_CLIENT_EMAIL)
+      && (process.env.FIREBASE_ADMIN_PRIVATE_KEY || process.env.FIREBASE_PRIVATE_KEY),
+  )
+}
+
+function canUseApplicationDefaultCredentials() {
+  return Boolean(
+    process.env.GOOGLE_APPLICATION_CREDENTIALS
+      || process.env.FIREBASE_CONFIG
+      || process.env.GCLOUD_PROJECT
+      || process.env.GOOGLE_CLOUD_PROJECT,
+  )
+}
+
+function isFirebaseAdminConfiguredFromEnv() {
+  return hasFirebaseAdminCredentials() || canUseApplicationDefaultCredentials()
+}
+
+async function loadFirebaseAdmin() {
+  return import('./firebaseAdmin.js')
+}
+
 export function assertAiRateLimit(req, uid = '') {
   const key = uid || getClientIp(req)
   const now = Date.now()
@@ -103,11 +128,12 @@ export async function verifyOptionalFirebaseRequest(req) {
 
   if (!token) return null
 
-  if (!isFirebaseAdminConfigured()) {
+  if (!isFirebaseAdminConfiguredFromEnv()) {
     throw createHttpError(500, 'SERVER_CONFIG_MISSING', 'Server authentication is not configured.')
   }
 
   try {
+    const { getAdminAuth } = await loadFirebaseAdmin()
     return await getAdminAuth().verifyIdToken(token)
   } catch {
     throw createHttpError(401, 'auth/invalid-token', 'Unauthorized.')
@@ -174,8 +200,19 @@ function normalizeFirestoreDate(value) {
   return null
 }
 
+function getLocalCatalogProducts() {
+  return localProducts
+    .map((product) => normalizeProductForClient(product.id, product))
+    .filter(isCustomerVisibleProduct)
+    .map((product) => ({
+      ...product,
+      createdAt: normalizeFirestoreDate(product.createdAt),
+      updatedAt: normalizeFirestoreDate(product.updatedAt),
+    }))
+}
+
 async function loadActiveProductsFromFirestore() {
-  if (!isFirebaseAdminConfigured()) {
+  if (!isFirebaseAdminConfiguredFromEnv()) {
     const error = createHttpError(500, 'PRODUCT_CATALOG_ERROR', 'Product catalog could not be loaded')
     error.stage = 'products'
     error.firestoreCode = 'SERVER_CONFIG_MISSING'
@@ -190,6 +227,7 @@ async function loadActiveProductsFromFirestore() {
   }
 
   try {
+    const { getAdminFirestore } = await loadFirebaseAdmin()
     const snapshot = await getAdminFirestore()
       .collection(PRODUCT_COLLECTION)
       .where('active', '==', true)
@@ -620,17 +658,19 @@ function getDeterministicFallback({ request, candidates, filters, uid }) {
   }
 }
 
-export async function handleAiShoppingAssistant(body, { uid = '' } = {}) {
+export async function handleAiShoppingAssistant(body, { uid = '', useFirestoreProducts = false } = {}) {
   const request = normalizeBody(body)
   console.log('[AI] Input validated', {
     historyCount: request.history.length,
     hasCurrentProduct: Boolean(request.currentProductId),
   })
 
-  const products = await loadActiveProductsFromFirestore()
+  const products = useFirestoreProducts
+    ? await loadActiveProductsFromFirestore()
+    : getLocalCatalogProducts()
   console.log('[AI] Products loaded', {
     count: products.length,
-    source: 'firestore',
+    source: useFirestoreProducts ? 'firestore' : 'local-catalog',
   })
 
   const filters = buildConversationFilters(request.message, request.history)

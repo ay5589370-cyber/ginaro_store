@@ -1,8 +1,3 @@
-import {
-  parseJsonBody,
-  sendSuccess,
-} from '../../server/customDesignAssets.js'
-import { isFirebaseAdminConfigured } from '../../server/firebaseAdmin.js'
 import { getGroqConfigStatus } from '../../server/groqClient.js'
 import {
   assertAiRateLimit,
@@ -24,6 +19,84 @@ function safeLogText(value) {
     .slice(0, 180)
 }
 
+function sendJson(res, status, body) {
+  res.statusCode = status
+  res.setHeader('Content-Type', 'application/json')
+  res.end(JSON.stringify(body))
+}
+
+function sendSuccess(res, body = {}) {
+  return sendJson(res, 200, {
+    success: true,
+    ...body,
+  })
+}
+
+async function parseJsonBody(req, { maxBytes = 64 * 1024 } = {}) {
+  const contentLength = Number(req.headers['content-length'] || 0)
+
+  if (Number.isFinite(contentLength) && contentLength > maxBytes) {
+    const error = new Error('Request body is too large.')
+    error.status = 413
+    error.code = 'request/body-too-large'
+    throw error
+  }
+
+  if (req.body !== undefined) {
+    if (typeof req.body === 'object' && req.body !== null && !Buffer.isBuffer(req.body)) {
+      return req.body
+    }
+
+    const rawBody = Buffer.isBuffer(req.body) ? req.body.toString('utf8') : String(req.body || '')
+
+    if (Buffer.byteLength(rawBody, 'utf8') > maxBytes) {
+      const error = new Error('Request body is too large.')
+      error.status = 413
+      error.code = 'request/body-too-large'
+      throw error
+    }
+
+    if (!rawBody) return {}
+
+    try {
+      return JSON.parse(rawBody)
+    } catch {
+      const error = new Error('Invalid JSON request body.')
+      error.status = 400
+      error.code = 'request/invalid-json'
+      throw error
+    }
+  }
+
+  const chunks = []
+  let receivedBytes = 0
+
+  for await (const chunk of req) {
+    const buffer = Buffer.from(chunk)
+    receivedBytes += buffer.byteLength
+
+    if (receivedBytes > maxBytes) {
+      const error = new Error('Request body is too large.')
+      error.status = 413
+      error.code = 'request/body-too-large'
+      throw error
+    }
+
+    chunks.push(buffer)
+  }
+
+  if (chunks.length === 0) return {}
+
+  try {
+    return JSON.parse(Buffer.concat(chunks).toString('utf8'))
+  } catch {
+    const error = new Error('Invalid JSON request body.')
+    error.status = 400
+    error.code = 'request/invalid-json'
+    throw error
+  }
+}
+
 function sendAiError(res, status, error, code) {
   res.statusCode = status
   res.setHeader('Content-Type', 'application/json')
@@ -37,7 +110,7 @@ function sendAiError(res, status, error, code) {
 function getSafeAiConfigStatus() {
   return {
     ...getGroqConfigStatus(),
-    firebaseAdminConfigured: isFirebaseAdminConfigured(),
+    firebaseAdminConfigured: Boolean((process.env.FIREBASE_ADMIN_PROJECT_ID || process.env.FIREBASE_PROJECT_ID) && (process.env.FIREBASE_ADMIN_CLIENT_EMAIL || process.env.FIREBASE_CLIENT_EMAIL) && (process.env.FIREBASE_ADMIN_PRIVATE_KEY || process.env.FIREBASE_PRIVATE_KEY)),
   }
 }
 
@@ -132,6 +205,7 @@ export default async function handler(req, res) {
     const body = await parseJsonBody(req)
     const response = await handleAiShoppingAssistant(body, {
       uid: decodedToken?.uid || '',
+      useFirestoreProducts: Boolean(decodedToken?.uid),
     })
 
     return sendSuccess(res, { response })
